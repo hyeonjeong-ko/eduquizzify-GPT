@@ -36,10 +36,6 @@ class QuizRequest(BaseModel):
     focus_prompt: Optional[str] = None  # 사용자가 추가한 프롬프트 (선택 사항)
 
 
-class StudyRequest(BaseModel):
-    sectionId: str
-    focusPrompt = Optional[str] = None
-
 
 # 객관식; 퀴즈 생성 및 해설 추가 Prompt
 questions_prompt_with_explanation = ChatPromptTemplate.from_messages(
@@ -339,40 +335,40 @@ async def generate_quiz(request: QuizRequest):
         raise HTTPException(status_code=500, detail=f"퀴즈 생성 중 오류 발생: {str(e)}")
 
 
-@router.post("/studyings")
-async def study_docs(request: StudyRequest):
-    """
-    sectionId를 받아 vectorestore캐시 기반 학습내용 생성
-    """
-    section_id = request.sectionId
-    focus_prompt = request.focusPrompt
+# @router.post("/studyings")
+# async def study_docs(request: StudyRequest):
+#     """
+#     sectionId를 받아 vectorestore캐시 기반 학습내용 생성
+#     """
+#     section_id = request.sectionId
+#     focus_prompt = request.focusPrompt
 
-    # section_id에 해당하는 벡터스토어가져오기
+#     # section_id에 해당하는 벡터스토어가져오기
 
-    # 섹션 ID에 해당하는 벡터 스토어 폴더 경로
-    embeddings_dir = f"/Users/gohyeonjeong/Desktop/myFolder/vscode-projects/EduQuizzify-GPT/.cache/file_embeddings/{section_id}"
+#     # 섹션 ID에 해당하는 벡터 스토어 폴더 경로
+#     embeddings_dir = f"/Users/gohyeonjeong/Desktop/myFolder/vscode-projects/EduQuizzify-GPT/.cache/file_embeddings/{section_id}"
 
-    # 섹션 ID 폴더가 존재하지 않으면 Error
-    if not os.path.exists(embeddings_dir):
-        if not embeddings_dir:
-            raise HTTPException(
-                status_code=404,
-                detail=f"섹션 ID {section_id}에 해당하는 파일을 찾을 수 없고 임베딩을 생성할 수 없습니다.",
-            )
-    try:
-        # FAISS 벡터 스토어 불러오기
-        vectorstore = FAISS.load_local(embeddings_dir, OpenAIEmbeddings())
+#     # 섹션 ID 폴더가 존재하지 않으면 Error
+#     if not os.path.exists(embeddings_dir):
+#         if not embeddings_dir:
+#             raise HTTPException(
+#                 status_code=404,
+#                 detail=f"섹션 ID {section_id}에 해당하는 파일을 찾을 수 없고 임베딩을 생성할 수 없습니다.",
+#             )
+#     try:
+#         # FAISS 벡터 스토어 불러오기
+#         vectorstore = FAISS.load_local(embeddings_dir, OpenAIEmbeddings())
 
-        # 모든 문서를 가져오기 위해 대규모 검색 수행
-        docs = vectorstore.similarity_search(
-            "Retrieve all content from the document.", k=100
-        )
+#         # 모든 문서를 가져오기 위해 대규모 검색 수행
+#         docs = vectorstore.similarity_search(
+#             "Retrieve all content from the document.", k=100
+#         )
 
-        # 문서 내용을 하나로 병합
-        context = "\n\n".join([doc.page_content for doc in docs])
+#         # 문서 내용을 하나로 병합
+#         context = "\n\n".join([doc.page_content for doc in docs])
 
-        # 추가 프롬프트가 있는 경우 텍스트에 추가
-        context += f"\n\nAdditional context: {focus_prompt}"
+#         # 추가 프롬프트가 있는 경우 텍스트에 추가
+#         context += f"\n\nAdditional context: {focus_prompt}"
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"퀴즈 생성 중 오류 발생: {str(e)}")
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"퀴즈 생성 중 오류 발생: {str(e)}")
