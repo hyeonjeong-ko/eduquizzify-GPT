@@ -16,7 +16,7 @@ from prompts import (
     short_question_prompt,
     short_formatting_prompt,
     learning_cards_prompt,
-    learning_cards_formatter_prompt
+    learning_cards_formatter_prompt,
 )
 
 from pymongo import MongoClient
@@ -42,7 +42,6 @@ import re
 from langchain.schema import Document
 
 
-
 # 페이지 설정
 st.set_page_config(page_title="Card Quiz", page_icon="📝", layout="centered")
 
@@ -65,7 +64,7 @@ def save_quiz_to_mongo(card_data, card_type, card_idx):
         if card_type == "quiz":
             collection = db["quizzes"]
             question = card_data["questions"][card_idx]
-            
+
             # 객관식 퀴즈 저장
             if "answers" in question:  # 객관식 퀴즈
                 card = {
@@ -73,7 +72,7 @@ def save_quiz_to_mongo(card_data, card_type, card_idx):
                     "question": question["question"],
                     "answers": question.get("answers", None),
                     "explanation": question.get("explanation", None),
-                    "timestamp": datetime.now()
+                    "timestamp": datetime.now(),
                 }
             else:  # 주관식 퀴즈
                 card = {
@@ -81,7 +80,7 @@ def save_quiz_to_mongo(card_data, card_type, card_idx):
                     "question": question["question"],
                     "answer": question.get("answer", None),  # 주관식 답변 필드
                     "explanation": question.get("explanation", None),
-                    "timestamp": datetime.now()
+                    "timestamp": datetime.now(),
                 }
 
         elif card_type == "learning":
@@ -92,13 +91,41 @@ def save_quiz_to_mongo(card_data, card_type, card_idx):
         # 카드 데이터를 MongoDB에 저장
         collection.insert_one(card)
         st.success(f"Card {card_idx + 1}이(가) MongoDB에 저장되었습니다!")
-    
+
     except Exception as e:
         st.error(f"MongoDB에 카드 저장 중 오류 발생: {str(e)}")
-    
+
     finally:
         client.close()
 
+
+# 오답 기록을 MongoDB에 저장하는 함수
+def save_wrong_answer_to_mongo(question, correct_answer, user_answer, explanation):
+    try:
+        client = get_mongo_client()
+        db = client["quiz_db"]  # 'quiz_db' 데이터베이스 사용
+        collection = db["wrong_answers"]  # 'wrong_answers' 컬렉션 사용
+
+        # 오답 기록 데이터
+        wrong_answer_record = {
+            "question": question,
+            "correct_answer": correct_answer,
+            "user_answer": user_answer,
+            "explanation": explanation,
+            "timestamp": datetime.now(),  # 오답 발생 시간
+        }
+        print("##################")
+        print(wrong_answer_record)
+
+        # MongoDB에 오답 기록 저장
+        collection.insert_one(wrong_answer_record)
+        # st.success("오답이 MongoDB에 기록되었습니다.")
+
+    except Exception as e:
+        st.error(f"MongoDB에 오답 저장 중 오류 발생: {str(e)}")
+
+    finally:
+        client.close()
 
 
 def generate_quiz_from_embeddings(
@@ -106,8 +133,12 @@ def generate_quiz_from_embeddings(
 ):
     try:
         # 임베딩 로드
-        vectorstore = FAISS.load_local(embeddings_dir, OpenAIEmbeddings(),allow_dangerous_deserialization=True)
-        docs = vectorstore.similarity_search("Retrieve all content from the document.", k=100)
+        vectorstore = FAISS.load_local(
+            embeddings_dir, OpenAIEmbeddings(), allow_dangerous_deserialization=True
+        )
+        docs = vectorstore.similarity_search(
+            "Retrieve all content from the document.", k=100
+        )
         context = "\n\n".join([doc.page_content for doc in docs])
         context += f"\n\nAdditional context: {focus_prompt}"
 
@@ -117,7 +148,9 @@ def generate_quiz_from_embeddings(
         if card_type == "quiz":  # 퀴즈 카드 생성
             if question_type == "multiple":
                 chain = LLMChain(llm=llm, prompt=questions_prompt_with_explanation)
-                formatting_chain = LLMChain(llm=llm, prompt=formatting_prompt_with_explanation)
+                formatting_chain = LLMChain(
+                    llm=llm, prompt=formatting_prompt_with_explanation
+                )
             elif question_type == "short":
                 chain = LLMChain(llm=llm, prompt=short_question_prompt)
                 formatting_chain = LLMChain(llm=llm, prompt=short_formatting_prompt)
@@ -139,9 +172,6 @@ def generate_quiz_from_embeddings(
     except Exception as e:
         st.error(f"Error generating cards: {str(e)}")
         return None
-
-
-
 
 
 # 새로운 퀴즈 생성 모달 함수 정의
@@ -190,7 +220,6 @@ def quiz_more_prompt():
             st.rerun()
 
 
-
 # 퀴즈 생성 함수 정의
 # 임베딩과 카드를 생성하는 함수 (퀴즈 카드와 학습 카드를 처리)
 def generate_cards_from_embeddings(
@@ -199,7 +228,9 @@ def generate_cards_from_embeddings(
     try:
         # 임베딩 로드
         vectorstore = FAISS.load_local(embeddings_dir, OpenAIEmbeddings())
-        docs = vectorstore.similarity_search("Retrieve all content from the document.", k=100)
+        docs = vectorstore.similarity_search(
+            "Retrieve all content from the document.", k=100
+        )
         context = "\n\n".join([doc.page_content for doc in docs])
         context += f"\n\nAdditional context: {focus_prompt}"
 
@@ -209,7 +240,9 @@ def generate_cards_from_embeddings(
         if card_type == "quiz":  # 퀴즈 카드 생성
             if question_type == "multiple":
                 chain = LLMChain(llm=llm, prompt=questions_prompt_with_explanation)
-                formatting_chain = LLMChain(llm=llm, prompt=formatting_prompt_with_explanation)
+                formatting_chain = LLMChain(
+                    llm=llm, prompt=formatting_prompt_with_explanation
+                )
             elif question_type == "short":
                 chain = LLMChain(llm=llm, prompt=short_question_prompt)
                 formatting_chain = LLMChain(llm=llm, prompt=short_formatting_prompt)
@@ -233,11 +266,12 @@ def generate_cards_from_embeddings(
         return None
 
 
-
 # 파일 저장 경로 생성 함수
 def save_uploaded_file(uploaded_file):
     current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
-    save_dir = f"./.cache/file_embeddings/{current_date}_{uploaded_file.name.split('.')[0]}"
+    save_dir = (
+        f"./.cache/file_embeddings/{current_date}_{uploaded_file.name.split('.')[0]}"
+    )
     os.makedirs(save_dir, exist_ok=True)
     file_path = os.path.join(save_dir, uploaded_file.name)
 
@@ -264,14 +298,26 @@ def create_embedding(file_path, save_dir):
 def show_quiz_card(quiz_data, question_idx):
     question = quiz_data["questions"][question_idx]
     st.subheader(f"Question {question_idx + 1}: {question['question']}")
-    user_answer = st.radio("Select your answer:", [a["answer"] for a in question["answers"]])
-    
+    user_answer = st.radio(
+        "Select your answer:", [a["answer"] for a in question["answers"]]
+    )
+
     if st.button("Submit Answer"):
         correct_answer = next(a["answer"] for a in question["answers"] if a["correct"])
         if user_answer == correct_answer:
             st.success(f"정답입니다! {correct_answer}")
         else:
             st.error(f"오답입니다. 정답은 {correct_answer}입니다.")
+            
+            st.write("save_wrong_answer실행!!!!!!!!!!!")
+            # 사용자가 틀린 문제를 MongoDB에 저장
+            save_wrong_answer_to_mongo(
+                question["question"],
+                correct_answer,
+                user_answer,
+                question["explanation"],
+            )
+
         st.write(f"**Explanation**: {question['explanation']}")
 
 
@@ -280,7 +326,7 @@ def show_short_answer_card(quiz_data, question_idx):
     st.subheader(f"Question {question_idx + 1}: {question['question']}")
     user_answer_key = f"user_answer_{question_idx}"
     user_answer = st.text_input("Enter your answer:", key=user_answer_key)
-    
+
     if st.button("Submit Answer"):
         st.success(f"Correct Answer: {question['answer']}")
 
@@ -295,14 +341,28 @@ def show_card(card_data, card_type, card_idx):
         st.write(f"**Question**: {question['question']}")
 
         if "answers" in question:
-            user_answer = st.radio("Select your answer:", [a["answer"] for a in question["answers"]])
+            user_answer = st.radio(
+                "Select your answer:", [a["answer"] for a in question["answers"]]
+            )
             if st.button("Submit Answer"):
-                correct_answer = next(a["answer"] for a in question["answers"] if a["correct"])
+                correct_answer = next(
+                    a["answer"] for a in question["answers"] if a["correct"]
+                )
                 if user_answer == correct_answer:
                     st.success(f"정답입니다! {correct_answer}")
                 else:
                     st.error(f"오답입니다. 정답은 {correct_answer}입니다.")
-                st.write(f"**Explanation**: {question.get('explanation', 'No explanation available.')}")
+                                # 사용자가 틀린 문제를 MongoDB에 저장
+                    save_wrong_answer_to_mongo(
+                        question["question"],
+                        correct_answer,
+                        user_answer,
+                        question["explanation"],
+                    )
+
+                st.write(
+                    f"**Explanation**: {question.get('explanation', 'No explanation available.')}"
+                )
         else:
             user_answer = st.text_input("Enter your answer:")
             if st.button("Submit Answer"):
@@ -313,7 +373,7 @@ def show_card(card_data, card_type, card_idx):
         st.subheader(f"Card {card_idx + 1}")
         st.write(f"**Statement**: {card['statement']}")
         st.write(f"**Question**: {card['question']}")
-        if 'explanation' in card:
+        if "explanation" in card:
             st.write(f"**Explanation**: {card['explanation']}")
 
 
@@ -321,41 +381,43 @@ def preprocess_blog_content(raw_content):
     """
     주어진 블로그 텍스트에서 불필요한 정보(메뉴, 카테고리, 댓글, 통계 등)를 제거하고
     본문만 남기는 전처리 함수.
-    
+
     Parameters:
     raw_content (list of Document or str): 블로그의 원시 텍스트 리스트나 단일 텍스트
-    
+
     Returns:
     str: 전처리된 본문 텍스트
     """
     # 만약 raw_content가 Document 객체들의 리스트라면 각 page_content를 추출하여 결합
     if isinstance(raw_content, list):
-        raw_content = "\n".join([doc.page_content for doc in raw_content if isinstance(doc, Document)])
+        raw_content = "\n".join(
+            [doc.page_content for doc in raw_content if isinstance(doc, Document)]
+        )
 
     # 1. HTML 태그 제거
-    cleaned_content = re.sub(r'<.*?>', '', raw_content)
-    
+    cleaned_content = re.sub(r"<.*?>", "", raw_content)
+
     # 2. 불필요한 메뉴/카테고리/태그 관련 정보 제거
     patterns_to_remove = [
-        r'바로가기.*?닫기',   # 메뉴 관련 텍스트 제거
-        r'CATEGORY.*?(\n\n|\\n\\n)',  # 카테고리 및 하위 메뉴 제거
-        r'TAG.*?(\n\n|\\n\\n)',  # 태그 제거
-        r'공유하기.*?\n\n',  # 공유하기 관련 정보 제거
-        r'최근에 올라온 글.*?\n\n',  # 최근 글 리스트 제거
-        r'최근에 달린 댓글.*?\n\n',  # 최근 댓글 리스트 제거
-        r'댓글쓰기 폼.*?\n\n',  # 댓글 폼 제거
-        r'Powered by.*?Tistory',  # Tistory 관련 푸터 정보 제거
-        r'\n{2,}',  # 연속적인 빈 줄 제거
-        r'\s*반응형\s*',  # '반응형' 텍스트 제거
-        r'^\s*$',  # 빈 줄 제거
-        r'단축키.*?\n\n'  # 단축키 안내 제거
+        r"바로가기.*?닫기",  # 메뉴 관련 텍스트 제거
+        r"CATEGORY.*?(\n\n|\\n\\n)",  # 카테고리 및 하위 메뉴 제거
+        r"TAG.*?(\n\n|\\n\\n)",  # 태그 제거
+        r"공유하기.*?\n\n",  # 공유하기 관련 정보 제거
+        r"최근에 올라온 글.*?\n\n",  # 최근 글 리스트 제거
+        r"최근에 달린 댓글.*?\n\n",  # 최근 댓글 리스트 제거
+        r"댓글쓰기 폼.*?\n\n",  # 댓글 폼 제거
+        r"Powered by.*?Tistory",  # Tistory 관련 푸터 정보 제거
+        r"\n{2,}",  # 연속적인 빈 줄 제거
+        r"\s*반응형\s*",  # '반응형' 텍스트 제거
+        r"^\s*$",  # 빈 줄 제거
+        r"단축키.*?\n\n",  # 단축키 안내 제거
     ]
-    
+
     for pattern in patterns_to_remove:
-        cleaned_content = re.sub(pattern, '', cleaned_content, flags=re.DOTALL)
+        cleaned_content = re.sub(pattern, "", cleaned_content, flags=re.DOTALL)
 
     # 3. 기타 불필요한 공백 정리
-    cleaned_content = re.sub(r'\s+', ' ', cleaned_content).strip()
+    cleaned_content = re.sub(r"\s+", " ", cleaned_content).strip()
 
     return cleaned_content
 
@@ -395,11 +457,14 @@ if page == "quiz":
         if selection == "개인 파일 업로드 (PDF, TXT)":
             st.query_params = {"page": "file_upload"}  # 쿼리 파라미터 설정
         elif selection == "유튜브 영상 링크":
-            st.query_params = {"page": "youtube_input"}  # 유튜브 링크 입력 페이지로 이동
+            st.query_params = {
+                "page": "youtube_input"
+            }  # 유튜브 링크 입력 페이지로 이동
         elif selection == "웹문서 자료 링크":
             st.query_params = {"page": "web_input"}
 
 # 유튜브 영상 링크일때#####################
+
 
 # 유튜브 영상 다운로드 및 mp3로 추출 함수
 def download_audio_with_ytdlp(youtube_link, output_path):
@@ -416,8 +481,11 @@ def download_audio_with_ytdlp(youtube_link, output_path):
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(youtube_link, download=True)  # 영상 정보와 함께 다운로드
+        info = ydl.extract_info(
+            youtube_link, download=True
+        )  # 영상 정보와 함께 다운로드
         return info["title"]  # 다운로드된 영상의 제목 반환
+
 
 # mp3를 10분 단위로 분할하여 청크로 저장하는 함수
 def split_audio_into_chunks(audio_path, chunk_dir, chunk_duration=10):
@@ -434,11 +502,12 @@ def split_audio_into_chunks(audio_path, chunk_dir, chunk_duration=10):
         chunk = track[start_time:end_time]
         chunk.export(f"{chunk_dir}/chunk_{i}.mp3", format="mp3")
 
+
 # OpenAI Whisper API를 사용하여 각 청크 파일의 자막을 추출하는 함수
 def transcribe_chunks(chunk_folder, destination):
     # 청크 파일들을 glob을 통해 가져옴
     files = glob.glob(f"{chunk_folder}/*.mp3")
-    
+
     # 파일 순서대로 처리
     for file in files:
         with open(file, "rb") as audio_file, open(destination, "a") as text_file:
@@ -466,7 +535,9 @@ def refine_summary(transcript_path, user_request):
     """
     )
     first_summary_chain = LLMChain(llm=llm, prompt=first_summary_prompt)
-    summary = first_summary_chain.run({"text": docs[0].page_content, "user_request": user_request})
+    summary = first_summary_chain.run(
+        {"text": docs[0].page_content, "user_request": user_request}
+    )
 
     refine_prompt = ChatPromptTemplate.from_template(
         """
@@ -479,9 +550,16 @@ def refine_summary(transcript_path, user_request):
     refine_chain = LLMChain(llm=llm, prompt=refine_prompt)
 
     for doc in docs[1:]:
-        summary = refine_chain.run({"existing_summary": summary, "context": doc.page_content, "user_request": user_request})
+        summary = refine_chain.run(
+            {
+                "existing_summary": summary,
+                "context": doc.page_content,
+                "user_request": user_request,
+            }
+        )
 
     return summary
+
 
 # 유튜브 영상 처리 페이지
 
@@ -515,14 +593,18 @@ if page == "web_processing":
     cleaned_content = preprocess_blog_content(transformed_docs)
     # st.write(cleaned_content)
 
-    st.session_state["web_content"] = cleaned_content  # 전처리된 웹 콘텐츠를 세션에 저장
+    st.session_state["web_content"] = (
+        cleaned_content  # 전처리된 웹 콘텐츠를 세션에 저장
+    )
     st.success("웹 콘텐츠가 성공적으로 처리되었습니다!")
-    
+
     # 추가 요청 사항 입력 및 카드 선택
     st.title("퀴즈 또는 학습 카드 설정")
 
-    additional_request = st.text_area("추가 요청 사항 입력", placeholder="예: 특정 주제에 집중")
-    
+    additional_request = st.text_area(
+        "추가 요청 사항 입력", placeholder="예: 특정 주제에 집중"
+    )
+
     # 카드 유형 선택 (퀴즈 카드 or 학습 카드)
     card_type_selection = st.radio("카드 유형 선택:", ("퀴즈 카드", "학습 카드"))
     card_type = "quiz" if card_type_selection == "퀴즈 카드" else "learning"
@@ -554,7 +636,9 @@ if page == "web_card_generation":
     with st.spinner("카드를 생성하는 중입니다..."):
         try:
             # 임베딩 생성에 필요한 정보
-            embeddings_dir = f"./.cache/web_embeddings/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            embeddings_dir = (
+                f"./.cache/web_embeddings/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            )
             os.makedirs(embeddings_dir, exist_ok=True)
 
             # 웹 콘텐츠를 기반으로 임베딩 생성
@@ -578,7 +662,9 @@ if page == "web_card_generation":
 
             if card_data:
                 st.success("카드 생성 완료!")
-                st.session_state.card_data = card_data  # 생성된 카드 데이터를 세션에 저장
+                st.session_state.card_data = (
+                    card_data  # 생성된 카드 데이터를 세션에 저장
+                )
                 st.query_params = {"page": "card_display"}  # 카드 표시 페이지로 이동
                 st.rerun()
             else:
@@ -589,7 +675,9 @@ if page == "web_card_generation":
 # 유튜브 영상 처리 페이지
 if page == "youtube_input":
     st.title("유튜브 영상 링크를 입력하세요")
-    youtube_link = st.text_input("유튜브 영상 링크", placeholder="유튜브 URL을 입력하세요")
+    youtube_link = st.text_input(
+        "유튜브 영상 링크", placeholder="유튜브 URL을 입력하세요"
+    )
 
     if st.button("Submit"):
         if youtube_link:
@@ -605,8 +693,10 @@ if page == "youtube_input":
 if page == "quiz_settings":
     st.title("퀴즈 설정")
 
-    additional_request = st.text_area("퀴즈 생성에 대한 추가 요청 사항 입력", placeholder="예: 특정 주제에 집중")
-    
+    additional_request = st.text_area(
+        "퀴즈 생성에 대한 추가 요청 사항 입력", placeholder="예: 특정 주제에 집중"
+    )
+
     card_type_selection = st.radio("카드 유형 선택:", ("퀴즈 카드", "학습 카드"))
     card_type = "quiz" if card_type_selection == "퀴즈 카드" else "learning"
 
@@ -722,6 +812,7 @@ elif page == "file_upload":
             # 임베딩 파일 경로 세션 저장
             st.session_state["faiss_path"] = faiss_path
             st.session_state["pkl_path"] = pkl_path
+            st.session_state["embeddings_dir"] = save_dir  # 임베딩 디렉터리 저장
 
             # 카드 생성 페이지로 이동
             st.query_params = {"page": "card_generation"}  # 쿼리 파라미터 설정
@@ -735,21 +826,27 @@ elif page == "card_generation":
         st.write(f"업로드된 파일: {st.session_state['uploaded_file_path']}")
     else:
         st.warning("업로드된 파일이 없습니다.")
-    
+
     if "faiss_path" in st.session_state:
         st.write(f"FAISS 경로: {st.session_state['faiss_path']}")
     else:
         st.warning("FAISS 경로를 찾을 수 없습니다.")
-    
+
     if "pkl_path" in st.session_state:
         st.write(f"PKL 경로: {st.session_state['pkl_path']}")
     else:
         st.warning("PKL 경로를 찾을 수 없습니다.")
 
-    st.write(f"선택한 카드 유형: {st.session_state.get('card_type', '카드 유형이 선택되지 않았습니다.')}")
+    st.write(
+        f"선택한 카드 유형: {st.session_state.get('card_type', '카드 유형이 선택되지 않았습니다.')}"
+    )
     if st.session_state.get("card_type") == "quiz":
-        st.write(f"선택한 질문 유형: {st.session_state.get('question_type', '질문 유형이 선택되지 않았습니다.')}")
-    st.write(f"추가 요청 사항: {st.session_state.get('additional_request', '추가 요청 사항 없음')}")
+        st.write(
+            f"선택한 질문 유형: {st.session_state.get('question_type', '질문 유형이 선택되지 않았습니다.')}"
+        )
+    st.write(
+        f"추가 요청 사항: {st.session_state.get('additional_request', '추가 요청 사항 없음')}"
+    )
 
     # 카드 생성 호출
     if "faiss_path" in st.session_state:
@@ -773,7 +870,6 @@ elif page == "card_generation":
             st.error("카드 생성 실패!")
     else:
         st.error("FAISS 경로가 설정되지 않았습니다.")
-
 
 
 # 카드 표시 페이지 추가
@@ -814,9 +910,7 @@ elif page == "card_display":
         with col2:
             if st.button("카드 저장"):
                 st.write("카드 저장됨")
-                save_quiz_to_mongo(
-                    card_data, card_type, current_card_idx
-                )
+                save_quiz_to_mongo(card_data, card_type, current_card_idx)
 
         with col3:
             if st.button("다음 카드"):
