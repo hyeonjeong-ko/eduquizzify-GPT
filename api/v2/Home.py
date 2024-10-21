@@ -9,6 +9,10 @@ from langchain.chains import LLMChain
 from langchain.prompts import ChatPromptTemplate
 from langchain.document_loaders import UnstructuredFileLoader
 from langchain.text_splitter import CharacterTextSplitter
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain, StuffDocumentsChain, MapReduceDocumentsChain
+
+
 
 from prompts import (
     questions_prompt_with_explanation,
@@ -308,7 +312,7 @@ def show_quiz_card(quiz_data, question_idx):
             st.success(f"정답입니다! {correct_answer}")
         else:
             st.error(f"오답입니다. 정답은 {correct_answer}입니다.")
-            
+
             st.write("save_wrong_answer실행!!!!!!!!!!!")
             # 사용자가 틀린 문제를 MongoDB에 저장
             save_wrong_answer_to_mongo(
@@ -352,7 +356,7 @@ def show_card(card_data, card_type, card_idx):
                     st.success(f"정답입니다! {correct_answer}")
                 else:
                     st.error(f"오답입니다. 정답은 {correct_answer}입니다.")
-                                # 사용자가 틀린 문제를 MongoDB에 저장
+                    # 사용자가 틀린 문제를 MongoDB에 저장
                     save_wrong_answer_to_mongo(
                         question["question"],
                         correct_answer,
@@ -420,6 +424,59 @@ def preprocess_blog_content(raw_content):
     cleaned_content = re.sub(r"\s+", " ", cleaned_content).strip()
 
     return cleaned_content
+
+
+# MapReduce 요약 생성 함수
+# MapReduce 요약 생성 함수
+def summarize_youtube_script_with_map_reduce(transcript_path, user_request):
+    # 스크립트를 청크로 분할
+    loader = UnstructuredFileLoader(transcript_path)
+    splitter = CharacterTextSplitter(chunk_size=600, chunk_overlap=100)
+    docs = loader.load_and_split(text_splitter=splitter)
+
+    # 요약을 위한 프롬프트 정의 (Map 단계)
+    map_prompt_template = """
+    Summarize the following transcript chunk, focusing on the user's request: {user_request}
+    Text: {input_documents}
+    """
+    map_prompt = PromptTemplate.from_template(map_prompt_template)
+
+    # Map 단계의 LLMChain 정의
+    map_chain = LLMChain(
+        llm=ChatOpenAI(temperature=0.7), prompt=map_prompt
+    )
+
+    # 요약을 결합하기 위한 Reduce 단계의 프롬프트 정의
+    reduce_prompt_template = """
+    Combine the following summaries into a concise summary, focusing on the user's request: {user_request}
+    Summaries: {input_documents}
+    """
+    reduce_prompt = PromptTemplate.from_template(reduce_prompt_template)
+
+    # Reduce 단계의 LLMChain 정의
+    reduce_llm_chain = LLMChain(
+        llm=ChatOpenAI(temperature=0.7), prompt=reduce_prompt
+    )
+
+    # Reduce 단계를 위해 StuffDocumentsChain 사용
+    reduce_documents_chain = StuffDocumentsChain(
+        llm_chain=reduce_llm_chain, document_variable_name="input_documents"
+    )
+
+    # MapReduce 문서 체인 구성
+    map_reduce_chain = MapReduceDocumentsChain(
+        llm_chain=map_chain,  # Map 단계
+        reduce_documents_chain=reduce_documents_chain,  # Reduce 단계
+        document_variable_name="input_documents"  # 청크 처리
+    )
+
+    # 최종 요약을 생성
+    final_summary = map_reduce_chain.run({
+        "input_documents": docs,  # 문서 청크
+        "user_request": user_request  # 사용자 요청 반영
+    })
+
+    return final_summary
 
 
 # 페이지 상태 관리
@@ -737,8 +794,14 @@ if page == "youtube_processing":
     with st.spinner("OpenAI Whisper로 자막을 생성 중입니다..."):
         transcribe_chunks(chunk_dir, transcription_file)
 
-    with st.spinner("요약을 생성 중입니다..."):
-        summary = refine_summary(transcription_file, additional_request)
+    # with st.spinner("요약을 생성 중입니다..."):
+    #     summary = refine_summary(transcription_file, additional_request)
+    #     st.session_state["summary"] = summary
+
+    with st.spinner("MapReduce로 요약을 생성 중입니다..."):
+        summary = summarize_youtube_script_with_map_reduce(
+            transcription_file, additional_request
+        )
         st.session_state["summary"] = summary
 
     embeddings_dir = f"./.cache/youtube_embeddings/{current_date}"
