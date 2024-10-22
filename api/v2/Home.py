@@ -132,6 +132,38 @@ def save_wrong_answer_to_mongo(question, correct_answer, user_answer, explanatio
         client.close()
 
 
+def map_documents_to_important_info(docs, focus_prompt, llm):
+    # Map 단계에서 각 문서 청크의 중요한 정보를 추출
+    map_prompt_template = f"""
+    Based on the following document chunk, extract the most important information that relates to: {focus_prompt}
+    {{docs}}
+    """
+    map_prompt = PromptTemplate.from_template(map_prompt_template)
+    map_chain = LLMChain(llm=llm, prompt=map_prompt)
+
+    important_info_list = []
+    for doc in docs:
+        important_info = map_chain.run({"docs": doc.page_content})
+        important_info_list.append(important_info)
+    
+    return important_info_list
+
+def rerank_important_info(important_info_list, focus_prompt, llm):
+    # ReRank 단계에서 추출된 중요한 정보를 재정렬
+    rerank_prompt_template = f"""
+    Rank the following pieces of information by their importance based on the focus: {focus_prompt}
+    Information:
+    {{important_info}}
+    """
+    rerank_prompt = PromptTemplate.from_template(rerank_prompt_template)
+    rerank_chain = LLMChain(llm=llm, prompt=rerank_prompt)
+
+    important_info_str = "\n".join(important_info_list)
+    ranked_info = rerank_chain.run({"important_info": important_info_str})
+
+    return ranked_info
+
+
 def generate_quiz_from_embeddings(
     embeddings_dir, focus_prompt="", card_type="quiz", question_type="multiple"
 ):
@@ -143,12 +175,16 @@ def generate_quiz_from_embeddings(
         docs = vectorstore.similarity_search(
             "Retrieve all content from the document.", k=100
         )
-        context = "\n\n".join([doc.page_content for doc in docs])
-        context += f"\n\nAdditional context: {focus_prompt}"
 
-        # 카드 유형에 맞는 프롬프트 설정
         llm = ChatOpenAI(temperature=0.7)
 
+        # Map 단계: 중요한 정보 추출
+        important_info_list = map_documents_to_important_info(docs, focus_prompt, llm)
+
+        # ReRank 단계: 중요도에 따라 재정렬
+        ranked_info = rerank_important_info(important_info_list, focus_prompt, llm)
+
+        # 퀴즈 유형에 맞는 프롬프트 설정
         if card_type == "quiz":  # 퀴즈 카드 생성
             if question_type == "multiple":
                 chain = LLMChain(llm=llm, prompt=questions_prompt_with_explanation)
@@ -166,8 +202,8 @@ def generate_quiz_from_embeddings(
         else:
             raise ValueError(f"Invalid card type selected: {card_type}")
 
-        # 카드 생성 및 포매팅
-        card_output = chain.run({"context": context})
+        # 퀴즈 생성 및 포매팅
+        card_output = chain.run({"context": ranked_info})  # 랭크된 정보로 퀴즈 생성
         formatted_card = formatting_chain.run({"context": card_output})
         card_data = json.loads(formatted_card.replace("```", "").replace("json", ""))
 
@@ -176,6 +212,7 @@ def generate_quiz_from_embeddings(
     except Exception as e:
         st.error(f"Error generating cards: {str(e)}")
         return None
+
 
 
 # 새로운 퀴즈 생성 모달 함수 정의
